@@ -1,7 +1,21 @@
 # Secrets - 절대 커밋 금지 (디스코드 봇 토큰, 파파고/Azure API 키 등)
 .env
+.env.*
 *.env
 !.env.example
+
+# 인증서/키/자격증명 파일
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*credentials*.json
+secrets.*
+
+# 로컬 전용 설정 (개인 자격증명이 섞일 수 있음)
+local.properties
+gradle.properties
 
 # Gradle
 .gradle/
