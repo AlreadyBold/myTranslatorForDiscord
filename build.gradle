@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'application'
+    id 'checkstyle'
 }
 
 group = 'io.github.alreadybold'
@@ -29,8 +30,15 @@ dependencies {
 }
 
 application {
-    // 아직 만들지 않은 클래스지만, 나중에 이 경로에 만들 예정 (Main.java 작성 시 참고)
     mainClass = 'io.github.alreadybold.translator.Main'
+}
+
+checkstyle {
+    toolVersion = '10.20.2'
+    configFile = file('config/checkstyle/checkstyle.xml')
+    // 컨벤션 위반이 아직 빌드를 막지는 않고, 리포트로만 확인 (config/checkstyle/checkstyle.xml의 severity=warning과 동일한 취지)
+    ignoreFailures = true
+    maxWarnings = Integer.MAX_VALUE
 }
 
 tasks.named('test') {

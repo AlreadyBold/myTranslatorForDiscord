@@ -22,6 +22,9 @@ gradle.properties
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# VS Code Java 확장 빌드 산출물
+bin/
+
 # IntelliJ IDEA
 .idea/
 *.iml
