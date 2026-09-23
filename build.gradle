@@ -15,6 +15,10 @@ java {
 
 repositories {
     mavenCentral()
+    // libdave-jvm(DAVE 프로토콜 구현체)이 배포되는 저장소 - Maven Central엔 없음
+    maven {
+        url 'https://maven.lavalink.dev/snapshots'
+    }
 }
 
 dependencies {
@@ -27,6 +31,14 @@ dependencies {
     // JDA는 SLF4J API에 로그를 남기므로, 실제로 로그를 보려면 구현체가 필요함
     implementation 'org.slf4j:slf4j-api:2.0.19'
     implementation 'ch.qos.logback:logback-classic:1.6.3'
+
+    // DAVE(음성/영상 종단간 암호화) 프로토콜 구현체.
+    // 디스코드가 2026-03-01부터 이 프로토콜 없는 음성 연결을 전부 거부하기 시작했고,
+    // JDA는 인터페이스만 제공하고 실제 구현은 안 갖고 있어서 별도로 붙여야 함.
+    implementation 'moe.kyokobot.libdave:adapter-jda:ce725965e'
+    implementation 'moe.kyokobot.libdave:impl-jni:ce725965e'
+    // 네이티브(JNI) 라이브러리 - 실행 시에만 필요해서 runtimeOnly로 최소화
+    runtimeOnly 'moe.kyokobot.libdave:natives-darwin:ce725965e'
 }
 
 application {
