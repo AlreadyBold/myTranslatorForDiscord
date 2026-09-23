@@ -1,6 +1,7 @@
 package io.github.alreadybold.translator.audio;
 
 import java.io.ByteArrayOutputStream;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +43,17 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	// 무음 여부를 확인하는 주기. 오디오 콜백과 별개로 계속 폴링해야 한다.
 	private static final long SILENCE_CHECK_INTERVAL_MILLIS = 200;
 
+	// 이보다 짧게 쌓인 오디오는 실제 발화가 아니라 숨소리·마이크 잡음일 가능성이 높다고
+	// 보고 STT 호출 자체를 생략한다. CLOVA는 분당 과금(무료 티어 월 20분), Papago는
+	// 무료 티어 자체가 없는 종량제라서, 이런 잡음까지 매번 API로 보내면 실제 대화량과
+	// 무관하게 사용량만 깎여나간다. 400ms면 "네"·"응" 같은 짧은 대답은 살리면서 순간
+	// 잡음은 대부분 걸러진다.
+	private static final long MINIMUM_UTTERANCE_MILLIS = 400;
+	// 디스코드가 주는 PCM 포맷(48kHz, 스테레오, 16비트) 기준 1ms당 바이트 수.
+	// PcmResampler가 가정하는 포맷과 동일하다.
+	private static final int DISCORD_PCM_BYTES_PER_MILLISECOND = 192;
+	private static final long MINIMUM_UTTERANCE_BYTES = MINIMUM_UTTERANCE_MILLIS * DISCORD_PCM_BYTES_PER_MILLISECOND;
+
 	private final UserLanguageRegistry languageRegistry;
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
 	private final UserOutputLanguageRegistry outputLanguageRegistry;
@@ -61,6 +73,10 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	// STT 호출은 네트워크를 타는 느린 작업이라, 200ms마다 도는 무음 감지 스케줄러나
 	// /leave 커맨드 처리 스레드(3초 ACK 제한)를 막지 않도록 별도 스레드에서 실행한다.
 	private final ExecutorService recognitionExecutor = Executors.newCachedThreadPool();
+	// Papago는 무료 티어가 없는 종량제라서, 완전히 같은 문장을 다시 번역시키는 건
+	// (테스트 중 같은 말을 반복하거나, 흔한 인사말이 겹치는 경우 등) 순수 비용 낭비다.
+	// 이 핸들러(=하나의 음성 연결) 생명주기 동안만 유지되는 캐시로 충분하다.
+	private final TranslationCache translationCache = new TranslationCache();
 
 	public UserAudioReceiveHandler(
 			UserLanguageRegistry languageRegistry,
@@ -152,17 +168,25 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	}
 
 	private void submitForRecognition(UserAudioBuffer buffer, byte[] flushed) {
-		if (flushed != null) {
-			recognitionExecutor.submit(() -> {
-				try {
-					recognizeAndLog(buffer, flushed);
-				} catch (RuntimeException exception) {
-					// submit()으로 던진 작업은 결과(Future)를 아무도 확인하지 않으므로,
-					// 여기서 안 잡으면 예외가 로그 한 줄 없이 완전히 사라진다.
-					LOGGER.error("STT 처리 중 예외가 발생했습니다: {}", buffer.user.getName(), exception);
-				}
-			});
+		if (flushed == null) {
+			return;
 		}
+
+		if (flushed.length < MINIMUM_UTTERANCE_BYTES) {
+			LOGGER.debug(
+					"발화가 너무 짧아 STT 호출을 생략합니다(잡음으로 추정): {} - {} bytes", buffer.user.getName(), flushed.length);
+			return;
+		}
+
+		recognitionExecutor.submit(() -> {
+			try {
+				recognizeAndLog(buffer, flushed);
+			} catch (RuntimeException exception) {
+				// submit()으로 던진 작업은 결과(Future)를 아무도 확인하지 않으므로,
+				// 여기서 안 잡으면 예외가 로그 한 줄 없이 완전히 사라진다.
+				LOGGER.error("STT 처리 중 예외가 발생했습니다: {}", buffer.user.getName(), exception);
+			}
+		});
 	}
 
 	private void recognizeAndLog(UserAudioBuffer buffer, byte[] flushed) {
@@ -200,15 +224,30 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 		// 번역 target은 화자 본인이 /setoutputlang으로 미리 정해둔 값이다 (채널에 누가
 		// 있는지와 무관 - 화자가 "내 말을 이 언어로 보여줘"를 직접 설정하는 구조).
 		Language targetLanguage = outputLanguageRegistry.get(speaker.getIdLong());
-		Optional<String> translated = translationClient.translate(recognizedText, sourceLanguage, targetLanguage);
+		String cachedTranslation = translationCache.get(sourceLanguage, targetLanguage, recognizedText);
+		String translatedText;
 
-		if (translated.isEmpty()) {
-			LOGGER.warn("번역 실패: {} ({} -> {})", speaker.getName(), sourceLanguage, targetLanguage);
-			return;
+		if (cachedTranslation != null) {
+			translatedText = cachedTranslation;
+		} else {
+			Optional<String> translated = translationClient.translate(recognizedText, sourceLanguage, targetLanguage);
+
+			if (translated.isEmpty()) {
+				LOGGER.warn("번역 실패: {} ({} -> {})", speaker.getName(), sourceLanguage, targetLanguage);
+				return;
+			}
+
+			translatedText = translated.get();
+			translationCache.put(sourceLanguage, targetLanguage, recognizedText, translatedText);
 		}
 
-		String translatedText = translated.get();
-		LOGGER.info("번역 결과: {} ({} -> {}) -> {}", speaker.getName(), sourceLanguage, targetLanguage, translatedText);
+		LOGGER.info(
+				"번역 결과{}: {} ({} -> {}) -> {}",
+				cachedTranslation != null ? " (캐시)" : "",
+				speaker.getName(),
+				sourceLanguage,
+				targetLanguage,
+				translatedText);
 
 		// 자막은 원문과 번역문을 같이 보여준다 - 번역문만 보여주면, 원문 언어를 아는 사람이
 		// 번역이 이상할 때 뭐가 잘못 들렸는지 확인할 방법이 없다.
@@ -221,6 +260,41 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 		String speakerName = speakerMember == null ? speaker.getName() : speakerMember.getEffectiveName();
 
 		outputChannel.sendMessage("**" + speakerName + "**: " + recognizedText + "\n" + translatedText).queue();
+	}
+
+	/**
+	 * 최근 번역 결과를 (원문 언어, 번역 언어, 원문 텍스트) 키로 캐싱하는 고정 크기 캐시.
+	 *
+	 * Papago는 무료 티어 없이 호출/글자 수 기준으로 바로 과금되므로, 완전히 같은 문장을
+	 * 다시 번역 요청하는 건 그대로 비용 낭비다. 접근 순서를 유지하는 LinkedHashMap으로
+	 * 만들어서, 가장 오래 안 쓰인 항목부터 자동으로 밀어낸다(LRU).
+	 *
+	 * STT 결과는 캐싱하지 않는다 - 같은 말을 해도 음성 파형이 매번 미세하게 달라서
+	 * 캐시가 거의 적중하지 않고, 텍스트 캐시만으로 번역 비용 절감 효과는 충분하다.
+	 */
+	private static final class TranslationCache {
+
+		private static final int MAX_ENTRIES = 200;
+
+		private final Map<String, String> entries = new LinkedHashMap<>(16, 0.75f, true) {
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+				return size() > MAX_ENTRIES;
+			}
+		};
+
+		private synchronized String get(Language sourceLanguage, Language targetLanguage, String text) {
+			return entries.get(key(sourceLanguage, targetLanguage, text));
+		}
+
+		private synchronized void put(
+				Language sourceLanguage, Language targetLanguage, String text, String translatedText) {
+			entries.put(key(sourceLanguage, targetLanguage, text), translatedText);
+		}
+
+		private String key(Language sourceLanguage, Language targetLanguage, String text) {
+			return sourceLanguage.name() + "|" + targetLanguage.name() + "|" + text;
+		}
 	}
 
 	/**
