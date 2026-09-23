@@ -2,10 +2,13 @@ package io.github.alreadybold.translator.audio;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,14 +17,17 @@ import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.UserAudio;
 import net.dv8tion.jda.api.entities.User;
 
+import io.github.alreadybold.translator.i18n.Language;
+import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.stt.SpeechToTextClient;
+
 /**
- * 유저별로 분리된 음성 채널 오디오를 수신하고, 발화 단위로 묶어내는 핸들러.
+ * 유저별로 분리된 음성 채널 오디오를 수신하고, 발화 단위로 묶어서 STT로 넘기는 핸들러.
  *
  * PCM 오디오는 20ms짜리 조각으로 쪼개져서 계속 들어오기 때문에, 그대로는 STT에 넘길 수 없다.
  * 유저별로 오디오를 이어붙이다가, 일정 시간 새 오디오가 안 들어오면 "한 문장이 끝났다"고
  * 보고 그때까지 쌓인 걸 하나의 덩어리로 넘긴다. 디스코드는 "말이 끝났다"는 신호를 따로 주지
  * 않고 그냥 패킷 전송을 멈출 뿐이라서, 무음 여부는 별도 스케줄러로 주기적으로 확인해야 한다.
- * 지금 단계에서는 실제 STT 연동 전이라 로그로만 확인한다.
  */
 public class UserAudioReceiveHandler implements AudioReceiveHandler {
 
@@ -32,10 +38,28 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	// 무음 여부를 확인하는 주기. 오디오 콜백과 별개로 계속 폴링해야 한다.
 	private static final long SILENCE_CHECK_INTERVAL_MILLIS = 200;
 
+	private final UserLanguageRegistry languageRegistry;
+	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
+
+	// 정상적인 세션으로 인정하기 위한 최소 성공 패킷 수 (20ms짜리 조각 15개 = 300ms 분량).
+	// 실제로 겪어보니 "완전히 죽은 세션"도 수백 개 중 우연히 패킷 1~2개는 성공하는 경우가
+	// 있어서, 단순히 "한 번이라도 받았는가"만 보면 거의 안 되는 세션도 정상으로 오판한다.
+	private static final int HEALTHY_PACKET_COUNT_THRESHOLD = 15;
+
 	private final Map<Long, UserAudioBuffer> buffersByUserId = new ConcurrentHashMap<>();
 	private final ScheduledExecutorService silenceChecker = Executors.newSingleThreadScheduledExecutor();
+	// 이 핸들러가 살아있는 동안 성공적으로 받은 오디오 패킷 개수.
+	// VoiceConnectionSupervisor가 "이 접속이 죽은 세션인지"를 판단하는 데 사용한다.
+	private final AtomicInteger receivedPacketCount = new AtomicInteger(0);
+	// STT 호출은 네트워크를 타는 느린 작업이라, 200ms마다 도는 무음 감지 스케줄러나
+	// /leave 커맨드 처리 스레드(3초 ACK 제한)를 막지 않도록 별도 스레드에서 실행한다.
+	private final ExecutorService recognitionExecutor = Executors.newCachedThreadPool();
 
-	public UserAudioReceiveHandler() {
+	public UserAudioReceiveHandler(
+			UserLanguageRegistry languageRegistry, Map<Language, SpeechToTextClient> sttClientsByLanguage) {
+		this.languageRegistry = languageRegistry;
+		this.sttClientsByLanguage = sttClientsByLanguage;
+
 		silenceChecker.scheduleAtFixedRate(
 				this::flushSilentBuffers,
 				SILENCE_CHECK_INTERVAL_MILLIS,
@@ -52,11 +76,25 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 
 	@Override
 	public void handleUserAudio(UserAudio userAudio) {
+		receivedPacketCount.incrementAndGet();
+
 		User user = userAudio.getUser();
 		byte[] audioData = userAudio.getAudioData(1.0);
 
 		buffersByUserId.computeIfAbsent(user.getIdLong(), id -> new UserAudioBuffer(user))
 				.append(audioData);
+	}
+
+	/**
+	 * 이 핸들러가 만들어진 이후 오디오를 "충분히 안정적으로" 받았는지.
+	 *
+	 * 단순히 "한 번이라도 받았는가"로는 부족하다 - 디스코드의 DAVE(E2EE) 복호화가
+	 * 사실상 다 실패하는 죽은 세션에서도, 수백 개 패킷 중 우연히 1~2개는 성공하는
+	 * 경우가 있어서 그 기준으로는 죽은 세션을 정상으로 오판하게 된다. 그래서 최소
+	 * 개수(HEALTHY_PACKET_COUNT_THRESHOLD) 이상 받았을 때만 정상으로 판단한다.
+	 */
+	public boolean hasReceivedAudio() {
+		return receivedPacketCount.get() >= HEALTHY_PACKET_COUNT_THRESHOLD;
 	}
 
 	/**
@@ -66,29 +104,69 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	 * 무음 기준 시간(800ms)이 지나기 전에 유저가 바로 나가버리면, 스케줄러만 멈추고
 	 * 끝낼 경우 그 마지막 발화가 영영 flush 안 되고 유실된다. 그래서 스케줄러를 멈추기
 	 * 전에 남아있는 모든 버퍼를 한 번 강제로 비워준다.
+	 *
+	 * recognitionExecutor는 shutdownNow()가 아니라 shutdown()으로 정리한다 - 방금
+	 * flushAllBuffers()가 던져 넣은 마지막 STT 작업은 봇이 채널을 나간 뒤에도 끝까지
+	 * 완료되게 두고, 새 작업만 더 이상 안 받도록 하기 위함이다.
 	 */
 	public void shutdown() {
 		silenceChecker.shutdownNow();
 		flushAllBuffers();
+		recognitionExecutor.shutdown();
 	}
 
 	private void flushSilentBuffers() {
-		long now = System.currentTimeMillis();
+		// ScheduledExecutorService#scheduleAtFixedRate는 태스크가 예외를 던지면 그
+		// 순간부터 이후 실행을 전부 조용히 취소해버린다 (로그 한 줄도 안 남기고).
+		// 그러면 오디오는 계속 들어오는데 무음 감지 자체가 영원히 멈춰서, 원인을
+		// 알아낼 방법이 없어진다. 그래서 여기서 반드시 잡아서 로그로 남긴다.
+		try {
+			long now = System.currentTimeMillis();
 
-		buffersByUserId.forEach((userId, buffer) -> {
-			byte[] flushed = buffer.flushIfSilent(now, SILENCE_THRESHOLD_MILLIS);
-			logFlushed(buffer, flushed);
-		});
+			buffersByUserId.forEach((userId, buffer) -> {
+				byte[] flushed = buffer.flushIfSilent(now, SILENCE_THRESHOLD_MILLIS);
+				submitForRecognition(buffer, flushed);
+			});
+		} catch (RuntimeException exception) {
+			LOGGER.error("무음 감지 스케줄러에서 예외가 발생했습니다.", exception);
+		}
 	}
 
 	private void flushAllBuffers() {
-		buffersByUserId.forEach((userId, buffer) -> logFlushed(buffer, buffer.flushRemaining()));
+		buffersByUserId.forEach((userId, buffer) -> submitForRecognition(buffer, buffer.flushRemaining()));
 	}
 
-	private void logFlushed(UserAudioBuffer buffer, byte[] flushed) {
+	private void submitForRecognition(UserAudioBuffer buffer, byte[] flushed) {
 		if (flushed != null) {
-			// 다음 단계(STT 연동)에서는 여기서 flushed를 STT 엔진으로 넘기게 된다.
-			LOGGER.info("발화 종료: {} - {} bytes", buffer.user.getName(), flushed.length);
+			recognitionExecutor.submit(() -> {
+				try {
+					recognizeAndLog(buffer, flushed);
+				} catch (RuntimeException exception) {
+					// submit()으로 던진 작업은 결과(Future)를 아무도 확인하지 않으므로,
+					// 여기서 안 잡으면 예외가 로그 한 줄 없이 완전히 사라진다.
+					LOGGER.error("STT 처리 중 예외가 발생했습니다: {}", buffer.user.getName(), exception);
+				}
+			});
+		}
+	}
+
+	private void recognizeAndLog(UserAudioBuffer buffer, byte[] flushed) {
+		Language language = languageRegistry.get(buffer.user.getIdLong());
+		SpeechToTextClient sttClient = sttClientsByLanguage.get(language);
+
+		if (sttClient == null) {
+			// 예: 한국어는 Phase 4 Step 3에서 CLOVA 연동 전까지 담당 엔진이 없다.
+			LOGGER.info("발화 종료(STT 미지원 언어 {}): {} - {} bytes", language, buffer.user.getName(), flushed.length);
+			return;
+		}
+
+		byte[] sttFormatAudio = PcmResampler.discordAudioToSttFormat(flushed);
+		Optional<String> recognized = sttClient.recognize(sttFormatAudio, language);
+
+		if (recognized.isPresent()) {
+			LOGGER.info("STT 인식 결과: {} ({}) -> {}", buffer.user.getName(), language, recognized.get());
+		} else {
+			LOGGER.info("발화 종료(인식 결과 없음): {} - {} bytes", buffer.user.getName(), flushed.length);
 		}
 	}
 

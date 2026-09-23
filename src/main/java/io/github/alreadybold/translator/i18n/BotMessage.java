@@ -53,7 +53,13 @@ public enum BotMessage {
 			Language.KO, "말하는 언어를 `%s`로 설정했어요.",
 			Language.EN, "Your spoken language is now set to `%s`.",
 			Language.CN, "已将你所说的语言设置为 `%s`。",
-			Language.JA, "話す言語を `%s` に設定しました。"));
+			Language.JA, "話す言語を `%s` に設定しました。")),
+
+	ALREADY_CONNECTED(Map.of(
+			Language.KO, "이미 `%s` 채널에 들어가 있어요.",
+			Language.EN, "I'm already in `%s`.",
+			Language.CN, "已经在 `%s` 频道里了。",
+			Language.JA, "すでに `%s` チャンネルにいます。"));
 
 	private final Map<Language, String> textByLanguage;
 

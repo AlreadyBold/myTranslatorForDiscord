@@ -1,5 +1,8 @@
 package io.github.alreadybold.translator;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,11 +13,15 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
+import io.github.alreadybold.translator.audio.VoiceConnectionRegistry;
 import io.github.alreadybold.translator.command.CommandRegistrationListener;
 import io.github.alreadybold.translator.command.JoinCommandListener;
 import io.github.alreadybold.translator.command.LeaveCommandListener;
 import io.github.alreadybold.translator.command.SetLanguageCommandListener;
+import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.stt.AzureSpeechToTextClient;
+import io.github.alreadybold.translator.stt.SpeechToTextClient;
 import io.github.cdimascio.dotenv.Dotenv;
 import moe.kyokobot.libdave.NativeDaveFactory;
 import moe.kyokobot.libdave.jda.LDJDADaveSessionFactory;
@@ -62,6 +69,31 @@ public class Main {
 		// 두는 대신 이렇게 명시적으로 주입하면, 누가 이 상태를 쓰는지가 코드에 드러난다.
 		UserLanguageRegistry languageRegistry = new UserLanguageRegistry();
 
+		// 길드별로 활성화된 VoiceConnectionSupervisor(자동 재접속 감시)를 추적하는 저장소.
+		// /join이 등록하고 /leave가 정리한다.
+		VoiceConnectionRegistry connectionRegistry = new VoiceConnectionRegistry();
+
+		// 언어별 STT 엔진 라우팅 표. 지금은 Azure(영어/중국어/일본어)만 준비돼 있고,
+		// 한국어는 Phase 4 Step 3에서 CLOVA Speech를 붙이면 채워질 자리다. 키가 없는
+		// 언어로 말하면 UserAudioReceiveHandler가 "STT 미지원 언어"로 로그만 남기고 넘어간다.
+		//
+		// Azure 키가 아직 없어도(.env에 값을 안 넣은 상태) 봇 자체는 정상적으로 켜져야 하므로,
+		// 여기서 빈 값이면 그냥 경고만 남기고 건너뛴다 - DISCORD_BOT_TOKEN과 달리 이건
+		// "당장 없으면 아예 못 켜지는" 필수값이 아니라 선택적 기능이기 때문이다.
+		Map<Language, SpeechToTextClient> sttClientsByLanguage = new EnumMap<>(Language.class);
+		String azureSpeechKey = dotenv.get("AZURE_SPEECH_KEY");
+		String azureSpeechRegion = dotenv.get("AZURE_SPEECH_REGION");
+
+		if (azureSpeechKey != null && !azureSpeechKey.isBlank()
+				&& azureSpeechRegion != null && !azureSpeechRegion.isBlank()) {
+			SpeechToTextClient azureClient = new AzureSpeechToTextClient(azureSpeechKey, azureSpeechRegion);
+			sttClientsByLanguage.put(Language.EN, azureClient);
+			sttClientsByLanguage.put(Language.CN, azureClient);
+			sttClientsByLanguage.put(Language.JA, azureClient);
+		} else {
+			LOGGER.warn("AZURE_SPEECH_KEY/AZURE_SPEECH_REGION이 없어 영어/중국어/일본어 STT가 비활성화됩니다.");
+		}
+
 		// addEventListeners: 커맨드 등록은 CommandRegistrationListener 한 곳에서만 하고,
 		// 각 커맨드의 실행 로직은 커맨드별 리스너로 분리한다.
 		// (등록을 여러 리스너가 각자 하면 guild.updateCommands()가 서로의 등록을 덮어써버림)
@@ -86,8 +118,8 @@ public class Main {
 				.setMemberCachePolicy(MemberCachePolicy.VOICE)
 				.addEventListeners(
 						new CommandRegistrationListener(),
-						new JoinCommandListener(languageRegistry),
-						new LeaveCommandListener(languageRegistry),
+						new JoinCommandListener(languageRegistry, sttClientsByLanguage, connectionRegistry),
+						new LeaveCommandListener(languageRegistry, connectionRegistry),
 						new SetLanguageCommandListener(languageRegistry))
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))

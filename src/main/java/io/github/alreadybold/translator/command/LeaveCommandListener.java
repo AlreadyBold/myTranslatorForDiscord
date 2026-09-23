@@ -3,13 +3,12 @@ package io.github.alreadybold.translator.command;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.managers.AudioManager;
 
-import io.github.alreadybold.translator.audio.UserAudioReceiveHandler;
+import io.github.alreadybold.translator.audio.VoiceConnectionRegistry;
 import io.github.alreadybold.translator.i18n.BotMessage;
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
@@ -25,9 +24,11 @@ public class LeaveCommandListener extends ListenerAdapter {
 	private static final Logger LOGGER = LoggerFactory.getLogger(LeaveCommandListener.class);
 
 	private final UserLanguageRegistry languageRegistry;
+	private final VoiceConnectionRegistry connectionRegistry;
 
-	public LeaveCommandListener(UserLanguageRegistry languageRegistry) {
+	public LeaveCommandListener(UserLanguageRegistry languageRegistry, VoiceConnectionRegistry connectionRegistry) {
 		this.languageRegistry = languageRegistry;
+		this.connectionRegistry = connectionRegistry;
 	}
 
 	@Override
@@ -54,13 +55,9 @@ public class LeaveCommandListener extends ListenerAdapter {
 			return;
 		}
 
-		// 오디오 버퍼링용 백그라운드 스레드(무음 감지 스케줄러)를 정리한다.
-		// 안 하면 연결이 끊긴 뒤에도 그 스레드가 계속 살아남는다.
-		AudioReceiveHandler receivingHandler = audioManager.getReceivingHandler();
-
-		if (receivingHandler instanceof UserAudioReceiveHandler userAudioReceiveHandler) {
-			userAudioReceiveHandler.shutdown();
-		}
+		// supervisor의 감시 스케줄러와 현재 핸들러의 백그라운드 스레드를 정리한다.
+		// 안 하면 유저가 나간 뒤에도 "오디오 안 들어옴 -> 재접속" 감시가 계속 돌게 된다.
+		connectionRegistry.unregisterAndShutdown(guild.getIdLong());
 
 		audioManager.closeAudioConnection();
 		LOGGER.info("음성 채널 퇴장: {}", guild.getName());
