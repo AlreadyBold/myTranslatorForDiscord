@@ -11,6 +11,7 @@
 |---|---|---|
 | [checkpoint-01-phase1-3.md](checkpoint-01-phase1-3.md) | Phase 1~3 완료 (2026-09-23) | 봇 아키텍처, JDA 3단 스위치(Intent/CacheFlag/MemberCachePolicy), 오디오 파이프라인, DAVE 프로토콜, 스레딩, 슬래시 커맨드 등록 함정, 겪은 버그 4건 |
 | [checkpoint-02-phase4-azure.md](checkpoint-02-phase4-azure.md) | Phase 4 Azure STT 첫 성공 (2026-09-23) | 간헐적 음성 수신 실패를 몇 시간 쫓다가 찾아낸 진짜 원인(비동기 작업의 조용한 예외 삼킴 + Azure SDK 스트림 순서 버그), 자동 재접속 supervisor, "증상만 보고 원인 단정하지 말 것" 교훈 |
+| [checkpoint-03-phase4-complete.md](checkpoint-03-phase4-complete.md) | Phase 4 완료 (2026-09-23) | CLOVA Speech(한국어) 연동, SDK 있는 STT(Azure)와 순수 REST STT(CLOVA)의 구조 차이(WAV 인코딩, HTTP 클라이언트, JSON 파싱 직접 처리), 4개 언어 전부 실제 인식 결과 확인 |
 
 ## 작성 규칙
 
