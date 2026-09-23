@@ -13,6 +13,8 @@ import net.dv8tion.jda.api.utils.cache.CacheFlag;
 import io.github.alreadybold.translator.command.CommandRegistrationListener;
 import io.github.alreadybold.translator.command.JoinCommandListener;
 import io.github.alreadybold.translator.command.LeaveCommandListener;
+import io.github.alreadybold.translator.command.SetLanguageCommandListener;
+import io.github.alreadybold.translator.settings.UserLanguageRegistry;
 import io.github.cdimascio.dotenv.Dotenv;
 import moe.kyokobot.libdave.NativeDaveFactory;
 import moe.kyokobot.libdave.jda.LDJDADaveSessionFactory;
@@ -55,8 +57,13 @@ public class Main {
 		// 하려면 별도로 CacheFlag를 켜야 한다. createLight는 기본적으로 모든 캐시를 꺼두기
 		// 때문에, VOICE_STATE 캐시를 켜지 않으면 member.getVoiceState()가 항상 null을 반환한다.
 		//
+		// 유저별 선택 언어 저장소. 여러 리스너가 같은 인스턴스를 공유해야 하므로(한쪽에서 저장한
+		// 값을 다른 쪽에서 읽어야 함) 여기서 한 번만 만들어 생성자로 넘긴다. static 전역 변수로
+		// 두는 대신 이렇게 명시적으로 주입하면, 누가 이 상태를 쓰는지가 코드에 드러난다.
+		UserLanguageRegistry languageRegistry = new UserLanguageRegistry();
+
 		// addEventListeners: 커맨드 등록은 CommandRegistrationListener 한 곳에서만 하고,
-		// 각 커맨드의 실행 로직은 JoinCommandListener/LeaveCommandListener로 분리한다.
+		// 각 커맨드의 실행 로직은 커맨드별 리스너로 분리한다.
 		// (등록을 여러 리스너가 각자 하면 guild.updateCommands()가 서로의 등록을 덮어써버림)
 		//
 		// setMemberCachePolicy(VOICE): 오디오 패킷은 SSRC라는 숫자 ID로 "누가 보냈는지"를
@@ -79,8 +86,9 @@ public class Main {
 				.setMemberCachePolicy(MemberCachePolicy.VOICE)
 				.addEventListeners(
 						new CommandRegistrationListener(),
-						new JoinCommandListener(),
-						new LeaveCommandListener())
+						new JoinCommandListener(languageRegistry),
+						new LeaveCommandListener(languageRegistry),
+						new SetLanguageCommandListener(languageRegistry))
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))
 				.build();
