@@ -13,6 +13,8 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.managers.AudioManager;
 
 import io.github.alreadybold.translator.audio.UserAudioReceiveHandler;
+import io.github.alreadybold.translator.i18n.BotMessage;
+import io.github.alreadybold.translator.i18n.Language;
 
 /**
  * "/join" 슬래시 커맨드를 처리하는 리스너.
@@ -38,7 +40,8 @@ public class JoinCommandListener extends ListenerAdapter {
 		// 유저가 음성 채널에 들어가 있지 않으면 봇이 어디로 들어가야 할지 알 수 없다.
 		// 실제로 흔히 발생할 수 있는 사용자 실수라서, 예외를 던지는 대신 안내 메시지로 처리한다.
 		if (guild == null || voiceChannel == null) {
-			event.reply("먼저 음성 채널에 들어가 있어야 해요.").setEphemeral(true).queue();
+			// TODO: /setlang이 생기면 Language.KO 대신 이 유저가 선택한 언어를 넘기도록 변경
+			event.reply(BotMessage.NOT_IN_VOICE_CHANNEL.text(Language.KO)).setEphemeral(true).queue();
 			return;
 		}
 
@@ -50,7 +53,7 @@ public class JoinCommandListener extends ListenerAdapter {
 		} catch (InsufficientPermissionException exception) {
 			// 봇에게 Connect 권한이 없는 채널일 수 있음 - 서버 설정에 따라 흔히 발생하는 상황이라
 			// 명시적으로 잡아서 사용자에게 원인을 알려준다.
-			event.reply("이 채널에 들어갈 권한이 없어요. (Connect 권한 필요)").setEphemeral(true).queue();
+			event.reply(BotMessage.NO_CONNECT_PERMISSION.text(Language.KO)).setEphemeral(true).queue();
 			return;
 		}
 
@@ -58,7 +61,7 @@ public class JoinCommandListener extends ListenerAdapter {
 		audioManager.setReceivingHandler(new UserAudioReceiveHandler());
 
 		LOGGER.info("음성 채널 접속: {}", voiceChannel.getName());
-		event.reply("`" + voiceChannel.getName() + "` 채널에 들어갈게요!").queue();
+		event.reply(BotMessage.JOINED_CHANNEL.text(Language.KO, voiceChannel.getName())).queue();
 	}
 
 	/**
