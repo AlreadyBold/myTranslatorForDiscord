@@ -53,6 +53,11 @@ dependencies {
             extension = 'jar'
         }
     }
+
+    // STT - 한국어 입력 인식 (CLOVA Speech, 단문인식 REST API). SDK 없이 순수 REST 호출이라
+    // HTTP 클라이언트는 Java 표준 java.net.http를 쓰고, 응답 JSON 파싱용으로만 Gson을 추가한다.
+    // JDA가 전이 의존성으로 이미 갖고 있지만, 직접 코드에서 쓰는 거라 명시적으로 선언해둔다.
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 application {

@@ -21,6 +21,7 @@ import io.github.alreadybold.translator.command.SetLanguageCommandListener;
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
 import io.github.alreadybold.translator.stt.AzureSpeechToTextClient;
+import io.github.alreadybold.translator.stt.ClovaSpeechToTextClient;
 import io.github.alreadybold.translator.stt.SpeechToTextClient;
 import io.github.cdimascio.dotenv.Dotenv;
 import moe.kyokobot.libdave.NativeDaveFactory;
@@ -73,13 +74,12 @@ public class Main {
 		// /join이 등록하고 /leave가 정리한다.
 		VoiceConnectionRegistry connectionRegistry = new VoiceConnectionRegistry();
 
-		// 언어별 STT 엔진 라우팅 표. 지금은 Azure(영어/중국어/일본어)만 준비돼 있고,
-		// 한국어는 Phase 4 Step 3에서 CLOVA Speech를 붙이면 채워질 자리다. 키가 없는
-		// 언어로 말하면 UserAudioReceiveHandler가 "STT 미지원 언어"로 로그만 남기고 넘어간다.
+		// 언어별 STT 엔진 라우팅 표. 키가 없는 언어로 말하면 UserAudioReceiveHandler가
+		// "STT 미지원 언어"로 로그만 남기고 넘어간다.
 		//
-		// Azure 키가 아직 없어도(.env에 값을 안 넣은 상태) 봇 자체는 정상적으로 켜져야 하므로,
-		// 여기서 빈 값이면 그냥 경고만 남기고 건너뛴다 - DISCORD_BOT_TOKEN과 달리 이건
-		// "당장 없으면 아예 못 켜지는" 필수값이 아니라 선택적 기능이기 때문이다.
+		// 각 엔진 키가 아직 없어도(.env에 값을 안 넣은 상태) 봇 자체는 정상적으로 켜져야
+		// 하므로, 여기서 빈 값이면 그냥 경고만 남기고 건너뛴다 - DISCORD_BOT_TOKEN과 달리
+		// 이건 "당장 없으면 아예 못 켜지는" 필수값이 아니라 선택적 기능이기 때문이다.
 		Map<Language, SpeechToTextClient> sttClientsByLanguage = new EnumMap<>(Language.class);
 		String azureSpeechKey = dotenv.get("AZURE_SPEECH_KEY");
 		String azureSpeechRegion = dotenv.get("AZURE_SPEECH_REGION");
@@ -92,6 +92,17 @@ public class Main {
 			sttClientsByLanguage.put(Language.JA, azureClient);
 		} else {
 			LOGGER.warn("AZURE_SPEECH_KEY/AZURE_SPEECH_REGION이 없어 영어/중국어/일본어 STT가 비활성화됩니다.");
+		}
+
+		String clovaSpeechInvokeUrl = dotenv.get("CLOVA_SPEECH_INVOKE_URL");
+		String clovaSpeechSecretKey = dotenv.get("CLOVA_SPEECH_SECRET_KEY");
+
+		if (clovaSpeechInvokeUrl != null && !clovaSpeechInvokeUrl.isBlank()
+				&& clovaSpeechSecretKey != null && !clovaSpeechSecretKey.isBlank()) {
+			sttClientsByLanguage.put(
+					Language.KO, new ClovaSpeechToTextClient(clovaSpeechInvokeUrl, clovaSpeechSecretKey));
+		} else {
+			LOGGER.warn("CLOVA_SPEECH_INVOKE_URL/CLOVA_SPEECH_SECRET_KEY가 없어 한국어 STT가 비활성화됩니다.");
 		}
 
 		// addEventListeners: 커맨드 등록은 CommandRegistrationListener 한 곳에서만 하고,
