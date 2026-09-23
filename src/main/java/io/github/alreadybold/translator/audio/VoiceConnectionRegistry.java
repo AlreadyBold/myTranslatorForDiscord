@@ -3,6 +3,9 @@ package io.github.alreadybold.translator.audio;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * 길드(서버)별로 현재 활성화된 VoiceConnectionSupervisor를 보관한다.
  *
@@ -12,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 계속 돌게 된다.
  */
 public class VoiceConnectionRegistry {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(VoiceConnectionRegistry.class);
 
 	private final Map<Long, VoiceConnectionSupervisor> supervisorsByGuildId = new ConcurrentHashMap<>();
 
@@ -33,5 +38,26 @@ public class VoiceConnectionRegistry {
 		if (supervisor != null) {
 			supervisor.shutdown();
 		}
+	}
+
+	/**
+	 * 봇이 /leave를 거치지 않고 음성 채널에서 나가게 됐을 때(관리자가 강제로 내보냄,
+	 * 디스코드 자체의 연결 종료 등) 호출한다.
+	 *
+	 * 이 경로로 들어온 경우에도 등록된 supervisor가 자동 재접속을 스스로 진행하는
+	 * 중일 수 있다(VoiceConnectionSupervisor.isReconnecting()) - 그럴 땐 여기서
+	 * 건드리면 재접속 로직을 깨버리므로 그냥 둔다. 재접속 중이 아닌데도 채널에서
+	 * 나갔다면 진짜 외부 요인으로 끊긴 것이므로, 감시 스케줄러가 이미 나간 채널에
+	 * 계속 재접속을 시도하며 스레드가 새지 않도록 정리한다.
+	 */
+	public void cleanupIfExternallyDisconnected(long guildId) {
+		VoiceConnectionSupervisor supervisor = supervisorsByGuildId.get(guildId);
+
+		if (supervisor == null || supervisor.isReconnecting()) {
+			return;
+		}
+
+		unregisterAndShutdown(guildId);
+		LOGGER.info("음성 채널에서 예기치 않게 나가져서 연결 감시를 정리했습니다: {}", guildId);
 	}
 }

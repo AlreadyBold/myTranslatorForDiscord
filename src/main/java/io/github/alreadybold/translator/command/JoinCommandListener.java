@@ -102,6 +102,13 @@ public class JoinCommandListener extends ListenerAdapter {
 			// 명시적으로 잡아서 사용자에게 원인을 알려준다.
 			event.reply(BotMessage.NO_CONNECT_PERMISSION.text(language)).setEphemeral(true).queue();
 			return;
+		} catch (RuntimeException exception) {
+			// 위에서 예상한 권한 문제 외의 오류(채널이 그 사이 삭제됨, 디스코드 쪽 일시적
+			// 오류 등)까지 여기서 안 잡으면, 응답을 아예 안 보내서 유저 화면에는 3초 뒤
+			// "상호작용이 실패했습니다"만 뜨고 원인을 알 방법이 없다.
+			LOGGER.error("음성 채널 접속 중 예상치 못한 오류가 발생했습니다: {}", voiceChannel.getName(), exception);
+			event.reply(BotMessage.JOIN_FAILED.text(language)).setEphemeral(true).queue();
+			return;
 		}
 
 		// 길드에 이미 등록된 supervisor가 있으면(다른 채널로 이동하는 경우) register()가

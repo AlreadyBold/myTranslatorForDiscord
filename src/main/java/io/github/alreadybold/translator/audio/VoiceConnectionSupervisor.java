@@ -53,6 +53,12 @@ public class VoiceConnectionSupervisor {
 	private final ScheduledExecutorService healthChecker = Executors.newSingleThreadScheduledExecutor();
 
 	private volatile UserAudioReceiveHandler currentHandler;
+	// 자동 재접속(checkHealth)이 스스로 연결을 끊었다가 다시 여는 중인지 표시한다.
+	// BotVoiceDisconnectListener가 "봇이 음성 채널에서 나갔다"는 이벤트를 받았을 때,
+	// 이게 우리 자신이 재접속하려고 일부러 끊은 것인지, 아니면 관리자가 강제로 내보내는 등
+	// 외부 요인으로 끊긴 것인지 구분하는 데 쓴다 - 전자라면 여기서 건드리면 안 되고
+	// (재접속 로직이 이미 처리 중), 후자라면 죽은 채로 남은 supervisor를 정리해야 한다.
+	private volatile boolean reconnecting;
 
 	public VoiceConnectionSupervisor(
 			AudioManager audioManager,
@@ -78,6 +84,8 @@ public class VoiceConnectionSupervisor {
 	}
 
 	private void connectAttempt(int attemptNumber) {
+		reconnecting = false;
+
 		// 음성 채널의 자막은 그 채널에 딸린 텍스트 채팅(voiceChannel 자신이 GuildMessageChannel이기도
 		// 함)에 올린다 - 통화 중인 사람들이 보고 있을 확률이 가장 높은 위치라 별도 채널 설정 없이
 		// 바로 쓸 수 있다.
@@ -122,10 +130,22 @@ public class VoiceConnectionSupervisor {
 		LOGGER.warn(
 				"음성 연결에서 오디오가 전혀 안 들어와 재접속을 시도합니다 ({}/{}): {}",
 				attemptNumber, MAX_ATTEMPTS, voiceChannel.getName());
+		reconnecting = true;
 		handler.shutdown();
 		audioManager.closeAudioConnection();
 
 		healthChecker.schedule(() -> connectAttempt(attemptNumber + 1), RECONNECT_DELAY_SECONDS, TimeUnit.SECONDS);
+	}
+
+	/**
+	 * 지금 이 연결 끊김이 자동 재접속 로직 스스로가 일으킨 것인지.
+	 *
+	 * BotVoiceDisconnectListener가 이 값을 확인해서, true면 재접속이 알아서 처리할
+	 * 상황이니 아무것도 안 하고, false인데 봇이 채널에서 나갔다면 외부 요인(관리자가
+	 * 강제로 내보냄 등)으로 판단해 supervisor를 정리한다.
+	 */
+	public boolean isReconnecting() {
+		return reconnecting;
 	}
 
 	/**

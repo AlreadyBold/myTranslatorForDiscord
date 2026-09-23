@@ -13,6 +13,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
+import io.github.alreadybold.translator.audio.BotVoiceDisconnectListener;
 import io.github.alreadybold.translator.audio.VoiceConnectionRegistry;
 import io.github.alreadybold.translator.command.CommandRegistrationListener;
 import io.github.alreadybold.translator.command.JoinCommandListener;
@@ -158,7 +159,8 @@ public class Main {
 								connectionRegistry),
 						new LeaveCommandListener(languageRegistry, connectionRegistry),
 						new SetLanguageCommandListener(languageRegistry),
-						new SetOutputLanguageCommandListener(languageRegistry, outputLanguageRegistry))
+						new SetOutputLanguageCommandListener(languageRegistry, outputLanguageRegistry),
+						new BotVoiceDisconnectListener(connectionRegistry))
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))
 				.build();

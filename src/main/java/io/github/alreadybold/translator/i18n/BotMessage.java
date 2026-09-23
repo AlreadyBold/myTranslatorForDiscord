@@ -69,7 +69,13 @@ public enum BotMessage {
 			Language.KO, "말하는 언어(`%s`)와 같은 언어로는 번역 언어를 설정할 수 없어요.",
 			Language.EN, "You can't set the translation language to the same as your spoken language (`%s`).",
 			Language.CN, "翻译语言不能和你说的语言(`%s`)相同。",
-			Language.JA, "話す言語(`%s`)と同じ言語には翻訳先を設定できません。"));
+			Language.JA, "話す言語(`%s`)と同じ言語には翻訳先を設定できません。")),
+
+	JOIN_FAILED(Map.of(
+			Language.KO, "음성 채널 접속에 실패했어요. 잠시 후 다시 시도해주세요.",
+			Language.EN, "Failed to join the voice channel. Please try again in a moment.",
+			Language.CN, "加入语音频道失败,请稍后再试。",
+			Language.JA, "ボイスチャンネルへの接続に失敗しました。しばらくしてからもう一度お試しください。"));
 
 	private final Map<Language, String> textByLanguage;
 
