@@ -6,10 +6,8 @@ import java.util.Map;
 /**
  * 봇이 유저에게 보여주는 문구를 언어별로 관리하는 enum.
  *
- * 화자의 언어에 맞춰 응답을 보여주기 위한 것으로, 로그(개발자용)는 대상이 아니고 계속
- * 한국어로 남긴다. 지금은 유저별 언어 선택 기능(/setlang)이 아직 없어서 호출부에서
- * Language.KO를 임시로 고정해서 넘기고 있는데, 그 기능이 생기면 유저가 선택한 언어를
- * 넘기도록 바뀔 예정이다.
+ * 화자의 언어(UserLanguageRegistry로 선택한 값)에 맞춰 응답을 보여주기 위한 것으로,
+ * 로그(개발자용)는 대상이 아니고 계속 한국어로 남긴다.
  */
 public enum BotMessage {
 
@@ -59,7 +57,19 @@ public enum BotMessage {
 			Language.KO, "이미 `%s` 채널에 들어가 있어요.",
 			Language.EN, "I'm already in `%s`.",
 			Language.CN, "已经在 `%s` 频道里了。",
-			Language.JA, "すでに `%s` チャンネルにいます。"));
+			Language.JA, "すでに `%s` チャンネルにいます。")),
+
+	OUTPUT_LANGUAGE_SET(Map.of(
+			Language.KO, "내 발화를 `%s`로 번역해서 보여줄게요.",
+			Language.EN, "I'll translate what you say into `%s`.",
+			Language.CN, "会把你说的话翻译成 `%s`。",
+			Language.JA, "あなたの発話を `%s` に翻訳して表示します。")),
+
+	OUTPUT_LANGUAGE_SAME_AS_SPOKEN(Map.of(
+			Language.KO, "말하는 언어(`%s`)와 같은 언어로는 번역 언어를 설정할 수 없어요.",
+			Language.EN, "You can't set the translation language to the same as your spoken language (`%s`).",
+			Language.CN, "翻译语言不能和你说的语言(`%s`)相同。",
+			Language.JA, "話す言語(`%s`)と同じ言語には翻訳先を設定できません。"));
 
 	private final Map<Language, String> textByLanguage;
 

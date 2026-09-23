@@ -25,6 +25,7 @@ public class CommandRegistrationListener extends ListenerAdapter {
 	public static final String JOIN_COMMAND = "join";
 	public static final String LEAVE_COMMAND = "leave";
 	public static final String SET_LANGUAGE_COMMAND = "setlang";
+	public static final String SET_OUTPUT_LANGUAGE_COMMAND = "setoutputlang";
 	public static final String LANGUAGE_OPTION = "language";
 
 	@Override
@@ -35,7 +36,9 @@ public class CommandRegistrationListener extends ListenerAdapter {
 							Commands.slash(JOIN_COMMAND, "봇을 내가 있는 음성 채널로 불러옵니다"),
 							Commands.slash(LEAVE_COMMAND, "봇을 음성 채널에서 내보냅니다"),
 							Commands.slash(SET_LANGUAGE_COMMAND, "내가 말할 언어를 설정합니다")
-									.addOptions(buildLanguageOption()))
+									.addOptions(buildLanguageOption("말할 언어")),
+							Commands.slash(SET_OUTPUT_LANGUAGE_COMMAND, "내 발화를 번역해서 보여줄 언어를 설정합니다")
+									.addOptions(buildLanguageOption("번역해서 보여줄 언어")))
 					.queue();
 		}
 	}
@@ -44,10 +47,14 @@ public class CommandRegistrationListener extends ListenerAdapter {
 	 * 언어 선택 옵션. 선택지(choice)를 등록해두면 디스코드가 그 목록 외의 값을 아예 못 보내게
 	 * 막아주기 때문에, 처리하는 쪽에서 잘못된 문자열을 검증할 필요가 없어진다.
 	 * 선택지 value로 enum 이름을 그대로 쓰면 Language.valueOf()로 바로 되돌릴 수 있다.
+	 *
+	 * /setlang(화자가 말하는 언어)과 /setoutputlang(그 발화를 번역해서 보여줄 언어) 둘 다
+	 * 언어 하나를 고르는 건 같아서 옵션 구조는 공유하고, 설명 문구만 커맨드 의미에 맞게
+	 * 다르게 넣는다.
 	 */
-	private OptionData buildLanguageOption() {
+	private OptionData buildLanguageOption(String description) {
 		OptionData languageOption = new OptionData(
-				OptionType.STRING, LANGUAGE_OPTION, "말할 언어", true);
+				OptionType.STRING, LANGUAGE_OPTION, description, true);
 
 		for (Language language : Language.values()) {
 			languageOption.addChoice(language.displayName(), language.name());
