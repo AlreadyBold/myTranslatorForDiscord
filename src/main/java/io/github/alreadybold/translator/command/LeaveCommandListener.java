@@ -3,11 +3,13 @@ package io.github.alreadybold.translator.command;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.managers.AudioManager;
 
+import io.github.alreadybold.translator.audio.UserAudioReceiveHandler;
 import io.github.alreadybold.translator.i18n.BotMessage;
 import io.github.alreadybold.translator.i18n.Language;
 
@@ -42,6 +44,14 @@ public class LeaveCommandListener extends ListenerAdapter {
 		if (!audioManager.isConnected()) {
 			event.reply(BotMessage.NOT_CONNECTED.text(Language.KO)).setEphemeral(true).queue();
 			return;
+		}
+
+		// 오디오 버퍼링용 백그라운드 스레드(무음 감지 스케줄러)를 정리한다.
+		// 안 하면 연결이 끊긴 뒤에도 그 스레드가 계속 살아남는다.
+		AudioReceiveHandler receivingHandler = audioManager.getReceivingHandler();
+
+		if (receivingHandler instanceof UserAudioReceiveHandler userAudioReceiveHandler) {
+			userAudioReceiveHandler.shutdown();
 		}
 
 		audioManager.closeAudioConnection();
