@@ -20,7 +20,9 @@ import io.github.alreadybold.translator.audio.VoiceConnectionSupervisor;
 import io.github.alreadybold.translator.i18n.BotMessage;
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.settings.UserOutputLanguageRegistry;
 import io.github.alreadybold.translator.stt.SpeechToTextClient;
+import io.github.alreadybold.translator.translation.TranslationClient;
 
 /**
  * "/join" 슬래시 커맨드를 처리하는 리스너.
@@ -36,14 +38,20 @@ public class JoinCommandListener extends ListenerAdapter {
 
 	private final UserLanguageRegistry languageRegistry;
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
+	private final UserOutputLanguageRegistry outputLanguageRegistry;
+	private final TranslationClient translationClient;
 	private final VoiceConnectionRegistry connectionRegistry;
 
 	public JoinCommandListener(
 			UserLanguageRegistry languageRegistry,
 			Map<Language, SpeechToTextClient> sttClientsByLanguage,
+			UserOutputLanguageRegistry outputLanguageRegistry,
+			TranslationClient translationClient,
 			VoiceConnectionRegistry connectionRegistry) {
 		this.languageRegistry = languageRegistry;
 		this.sttClientsByLanguage = sttClientsByLanguage;
+		this.outputLanguageRegistry = outputLanguageRegistry;
+		this.translationClient = translationClient;
 		this.connectionRegistry = connectionRegistry;
 	}
 
@@ -79,7 +87,12 @@ public class JoinCommandListener extends ListenerAdapter {
 		}
 
 		VoiceConnectionSupervisor supervisor = new VoiceConnectionSupervisor(
-				audioManager, voiceChannel, languageRegistry, sttClientsByLanguage);
+				audioManager,
+				voiceChannel,
+				languageRegistry,
+				sttClientsByLanguage,
+				outputLanguageRegistry,
+				translationClient);
 
 		try {
 			// 접속 + 오디오 수신 핸들러 등록 + 이후 자동 재접속 감시까지 전부 supervisor가 담당한다.

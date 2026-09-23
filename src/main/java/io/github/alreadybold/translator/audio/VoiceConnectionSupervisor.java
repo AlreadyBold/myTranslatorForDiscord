@@ -14,7 +14,9 @@ import net.dv8tion.jda.api.managers.AudioManager;
 
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.settings.UserOutputLanguageRegistry;
 import io.github.alreadybold.translator.stt.SpeechToTextClient;
+import io.github.alreadybold.translator.translation.TranslationClient;
 
 /**
  * 음성 연결이 "죽은 세션"으로 뽑히는 경우를 감지해서 자동으로 재접속을 시도한다.
@@ -46,6 +48,8 @@ public class VoiceConnectionSupervisor {
 	private final AudioChannelUnion voiceChannel;
 	private final UserLanguageRegistry languageRegistry;
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
+	private final UserOutputLanguageRegistry outputLanguageRegistry;
+	private final TranslationClient translationClient;
 	private final ScheduledExecutorService healthChecker = Executors.newSingleThreadScheduledExecutor();
 
 	private volatile UserAudioReceiveHandler currentHandler;
@@ -54,11 +58,15 @@ public class VoiceConnectionSupervisor {
 			AudioManager audioManager,
 			AudioChannelUnion voiceChannel,
 			UserLanguageRegistry languageRegistry,
-			Map<Language, SpeechToTextClient> sttClientsByLanguage) {
+			Map<Language, SpeechToTextClient> sttClientsByLanguage,
+			UserOutputLanguageRegistry outputLanguageRegistry,
+			TranslationClient translationClient) {
 		this.audioManager = audioManager;
 		this.voiceChannel = voiceChannel;
 		this.languageRegistry = languageRegistry;
 		this.sttClientsByLanguage = sttClientsByLanguage;
+		this.outputLanguageRegistry = outputLanguageRegistry;
+		this.translationClient = translationClient;
 	}
 
 	/**
@@ -70,7 +78,8 @@ public class VoiceConnectionSupervisor {
 	}
 
 	private void connectAttempt(int attemptNumber) {
-		UserAudioReceiveHandler handler = new UserAudioReceiveHandler(languageRegistry, sttClientsByLanguage);
+		UserAudioReceiveHandler handler = new UserAudioReceiveHandler(
+				languageRegistry, sttClientsByLanguage, outputLanguageRegistry, translationClient);
 		currentHandler = handler;
 		audioManager.setReceivingHandler(handler);
 

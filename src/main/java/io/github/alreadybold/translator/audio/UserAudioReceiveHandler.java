@@ -19,7 +19,9 @@ import net.dv8tion.jda.api.entities.User;
 
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.settings.UserOutputLanguageRegistry;
 import io.github.alreadybold.translator.stt.SpeechToTextClient;
+import io.github.alreadybold.translator.translation.TranslationClient;
 
 /**
  * 유저별로 분리된 음성 채널 오디오를 수신하고, 발화 단위로 묶어서 STT로 넘기는 핸들러.
@@ -40,6 +42,8 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 
 	private final UserLanguageRegistry languageRegistry;
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
+	private final UserOutputLanguageRegistry outputLanguageRegistry;
+	private final TranslationClient translationClient;
 
 	// 정상적인 세션으로 인정하기 위한 최소 성공 패킷 수 (20ms짜리 조각 15개 = 300ms 분량).
 	// 실제로 겪어보니 "완전히 죽은 세션"도 수백 개 중 우연히 패킷 1~2개는 성공하는 경우가
@@ -56,9 +60,15 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	private final ExecutorService recognitionExecutor = Executors.newCachedThreadPool();
 
 	public UserAudioReceiveHandler(
-			UserLanguageRegistry languageRegistry, Map<Language, SpeechToTextClient> sttClientsByLanguage) {
+			UserLanguageRegistry languageRegistry,
+			Map<Language, SpeechToTextClient> sttClientsByLanguage,
+			UserOutputLanguageRegistry outputLanguageRegistry,
+			TranslationClient translationClient) {
 		this.languageRegistry = languageRegistry;
 		this.sttClientsByLanguage = sttClientsByLanguage;
+		this.outputLanguageRegistry = outputLanguageRegistry;
+		// Papago 키가 없으면 null - 이 경우 STT 결과만 로그로 남기고 번역은 건너뛴다.
+		this.translationClient = translationClient;
 
 		silenceChecker.scheduleAtFixedRate(
 				this::flushSilentBuffers,
@@ -151,22 +161,47 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	}
 
 	private void recognizeAndLog(UserAudioBuffer buffer, byte[] flushed) {
-		Language language = languageRegistry.get(buffer.user.getIdLong());
-		SpeechToTextClient sttClient = sttClientsByLanguage.get(language);
+		Language sourceLanguage = languageRegistry.get(buffer.user.getIdLong());
+		SpeechToTextClient sttClient = sttClientsByLanguage.get(sourceLanguage);
 
 		if (sttClient == null) {
-			// 예: 한국어는 Phase 4 Step 3에서 CLOVA 연동 전까지 담당 엔진이 없다.
-			LOGGER.info("발화 종료(STT 미지원 언어 {}): {} - {} bytes", language, buffer.user.getName(), flushed.length);
+			// 예: 한국어는 CLOVA 연동 전까지 담당 엔진이 없었다 (지금은 있음, 혹시
+			// 나중에 지원 언어가 더 늘어나면 이 분기가 다시 의미를 갖게 된다).
+			LOGGER.info(
+					"발화 종료(STT 미지원 언어 {}): {} - {} bytes", sourceLanguage, buffer.user.getName(), flushed.length);
 			return;
 		}
 
 		byte[] sttFormatAudio = PcmResampler.discordAudioToSttFormat(flushed);
-		Optional<String> recognized = sttClient.recognize(sttFormatAudio, language);
+		Optional<String> recognized = sttClient.recognize(sttFormatAudio, sourceLanguage);
 
-		if (recognized.isPresent()) {
-			LOGGER.info("STT 인식 결과: {} ({}) -> {}", buffer.user.getName(), language, recognized.get());
-		} else {
+		if (recognized.isEmpty()) {
 			LOGGER.info("발화 종료(인식 결과 없음): {} - {} bytes", buffer.user.getName(), flushed.length);
+			return;
+		}
+
+		String recognizedText = recognized.get();
+		LOGGER.info("STT 인식 결과: {} ({}) -> {}", buffer.user.getName(), sourceLanguage, recognizedText);
+
+		translateAndLog(buffer.user, recognizedText, sourceLanguage);
+	}
+
+	private void translateAndLog(User speaker, String recognizedText, Language sourceLanguage) {
+		if (translationClient == null) {
+			// Papago 키가 없으면(.env 미설정) 번역 없이 STT 결과만 로그로 남긴 상태로 끝낸다.
+			return;
+		}
+
+		// 번역 target은 화자 본인이 /setoutputlang으로 미리 정해둔 값이다 (채널에 누가
+		// 있는지와 무관 - 화자가 "내 말을 이 언어로 보여줘"를 직접 설정하는 구조).
+		Language targetLanguage = outputLanguageRegistry.get(speaker.getIdLong());
+		Optional<String> translated = translationClient.translate(recognizedText, sourceLanguage, targetLanguage);
+
+		if (translated.isPresent()) {
+			LOGGER.info(
+					"번역 결과: {} ({} -> {}) -> {}", speaker.getName(), sourceLanguage, targetLanguage, translated.get());
+		} else {
+			LOGGER.warn("번역 실패: {} ({} -> {})", speaker.getName(), sourceLanguage, targetLanguage);
 		}
 	}
 

@@ -18,11 +18,15 @@ import io.github.alreadybold.translator.command.CommandRegistrationListener;
 import io.github.alreadybold.translator.command.JoinCommandListener;
 import io.github.alreadybold.translator.command.LeaveCommandListener;
 import io.github.alreadybold.translator.command.SetLanguageCommandListener;
+import io.github.alreadybold.translator.command.SetOutputLanguageCommandListener;
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
+import io.github.alreadybold.translator.settings.UserOutputLanguageRegistry;
 import io.github.alreadybold.translator.stt.AzureSpeechToTextClient;
 import io.github.alreadybold.translator.stt.ClovaSpeechToTextClient;
 import io.github.alreadybold.translator.stt.SpeechToTextClient;
+import io.github.alreadybold.translator.translation.PapagoTranslationClient;
+import io.github.alreadybold.translator.translation.TranslationClient;
 import io.github.cdimascio.dotenv.Dotenv;
 import moe.kyokobot.libdave.NativeDaveFactory;
 import moe.kyokobot.libdave.jda.LDJDADaveSessionFactory;
@@ -70,6 +74,10 @@ public class Main {
 		// 두는 대신 이렇게 명시적으로 주입하면, 누가 이 상태를 쓰는지가 코드에 드러난다.
 		UserLanguageRegistry languageRegistry = new UserLanguageRegistry();
 
+		// 화자 언어(languageRegistry)와는 별개 축인 "번역 결과를 받아볼 언어" 저장소.
+		// Phase 5(번역)부터 실제로 쓰이기 시작한다.
+		UserOutputLanguageRegistry outputLanguageRegistry = new UserOutputLanguageRegistry();
+
 		// 길드별로 활성화된 VoiceConnectionSupervisor(자동 재접속 감시)를 추적하는 저장소.
 		// /join이 등록하고 /leave가 정리한다.
 		VoiceConnectionRegistry connectionRegistry = new VoiceConnectionRegistry();
@@ -105,6 +113,19 @@ public class Main {
 			LOGGER.warn("CLOVA_SPEECH_INVOKE_URL/CLOVA_SPEECH_SECRET_KEY가 없어 한국어 STT가 비활성화됩니다.");
 		}
 
+		// Papago 번역 클라이언트. STT 엔진들과 마찬가지로 선택적 기능이라, 키가 없으면
+		// 경고만 남기고 번역 없이(STT 결과만 로그로 남기며) 동작하게 둔다.
+		String papagoClientId = dotenv.get("PAPAGO_CLIENT_ID");
+		String papagoClientSecret = dotenv.get("PAPAGO_CLIENT_SECRET");
+		TranslationClient translationClient = null;
+
+		if (papagoClientId != null && !papagoClientId.isBlank()
+				&& papagoClientSecret != null && !papagoClientSecret.isBlank()) {
+			translationClient = new PapagoTranslationClient(papagoClientId, papagoClientSecret);
+		} else {
+			LOGGER.warn("PAPAGO_CLIENT_ID/PAPAGO_CLIENT_SECRET이 없어 번역이 비활성화됩니다.");
+		}
+
 		// addEventListeners: 커맨드 등록은 CommandRegistrationListener 한 곳에서만 하고,
 		// 각 커맨드의 실행 로직은 커맨드별 리스너로 분리한다.
 		// (등록을 여러 리스너가 각자 하면 guild.updateCommands()가 서로의 등록을 덮어써버림)
@@ -129,9 +150,15 @@ public class Main {
 				.setMemberCachePolicy(MemberCachePolicy.VOICE)
 				.addEventListeners(
 						new CommandRegistrationListener(),
-						new JoinCommandListener(languageRegistry, sttClientsByLanguage, connectionRegistry),
+						new JoinCommandListener(
+								languageRegistry,
+								sttClientsByLanguage,
+								outputLanguageRegistry,
+								translationClient,
+								connectionRegistry),
 						new LeaveCommandListener(languageRegistry, connectionRegistry),
-						new SetLanguageCommandListener(languageRegistry))
+						new SetLanguageCommandListener(languageRegistry),
+						new SetOutputLanguageCommandListener(languageRegistry, outputLanguageRegistry))
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))
 				.build();
