@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.audio.AudioModuleConfig;
 import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
 import io.github.alreadybold.translator.command.JoinCommandListener;
@@ -54,6 +55,13 @@ public class Main {
 		//
 		// addEventListeners: 슬래시 커맨드 등록/처리를 JoinCommandListener에 위임한다.
 		//
+		// setMemberCachePolicy(VOICE): 오디오 패킷은 SSRC라는 숫자 ID로 "누가 보냈는지"를
+		// 나타내는데, JDA가 그 SSRC를 실제 Member 객체로 바꾸려면 그 멤버가 캐시에 있어야 한다.
+		// createLight는 멤버 캐시도 기본으로 꺼두기 때문에, 이게 없으면 오디오는 도착해도
+		// "SSRC는 아는데 그게 누군지 모른다"는 경고만 찍히고 handleUserAudio가 아예 호출되지
+		// 않는다. VOICE 정책은 음성 채널에 있는 동안만 캐시하므로, 권한이 민감한
+		// GUILD_MEMBERS 인텐트 없이도 우리 용도엔 충분하다.
+		//
 		// setAudioModuleConfig(DAVE): 2026-03-01부터 디스코드는 DAVE(종단간 암호화)를
 		// 지원하지 않는 음성 연결을 전부 거부한다. JDA 자체는 이 프로토콜의 "인터페이스"만
 		// 제공하고 실제 구현은 없어서, libdave-jvm(NativeDaveFactory + LDJDADaveSessionFactory)을
@@ -64,6 +72,7 @@ public class Main {
 		// 디스코드 게이트웨이 연결을 시작한다. 이 메서드 자체는 연결 완료를 기다리지 않는다.
 		JDA jda = JDABuilder.createLight(token, GatewayIntent.GUILD_VOICE_STATES)
 				.enableCache(CacheFlag.VOICE_STATE)
+				.setMemberCachePolicy(MemberCachePolicy.VOICE)
 				.addEventListeners(new JoinCommandListener())
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))

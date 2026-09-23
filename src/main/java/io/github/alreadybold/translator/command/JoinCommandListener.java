@@ -14,6 +14,8 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.managers.AudioManager;
 
+import io.github.alreadybold.translator.audio.UserAudioReceiveHandler;
+
 /**
  * "/join" 슬래시 커맨드를 등록하고 처리하는 리스너.
  *
@@ -73,6 +75,9 @@ public class JoinCommandListener extends ListenerAdapter {
 			event.reply("이 채널에 들어갈 권한이 없어요. (Connect 권한 필요)").setEphemeral(true).queue();
 			return;
 		}
+
+		// 접속 직후 오디오 수신 핸들러를 등록해야, 이 채널에서 유저들이 말하는 PCM 오디오를 받기 시작한다.
+		audioManager.setReceivingHandler(new UserAudioReceiveHandler());
 
 		LOGGER.info("음성 채널 접속: {}", voiceChannel.getName());
 		event.reply("`" + voiceChannel.getName() + "` 채널에 들어갈게요!").queue();
