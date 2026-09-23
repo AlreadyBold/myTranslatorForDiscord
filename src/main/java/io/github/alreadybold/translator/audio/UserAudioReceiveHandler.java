@@ -15,7 +15,9 @@ import org.slf4j.LoggerFactory;
 
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.UserAudio;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel;
 
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
@@ -44,6 +46,7 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
 	private final UserOutputLanguageRegistry outputLanguageRegistry;
 	private final TranslationClient translationClient;
+	private final GuildMessageChannel outputChannel;
 
 	// 정상적인 세션으로 인정하기 위한 최소 성공 패킷 수 (20ms짜리 조각 15개 = 300ms 분량).
 	// 실제로 겪어보니 "완전히 죽은 세션"도 수백 개 중 우연히 패킷 1~2개는 성공하는 경우가
@@ -63,12 +66,14 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 			UserLanguageRegistry languageRegistry,
 			Map<Language, SpeechToTextClient> sttClientsByLanguage,
 			UserOutputLanguageRegistry outputLanguageRegistry,
-			TranslationClient translationClient) {
+			TranslationClient translationClient,
+			GuildMessageChannel outputChannel) {
 		this.languageRegistry = languageRegistry;
 		this.sttClientsByLanguage = sttClientsByLanguage;
 		this.outputLanguageRegistry = outputLanguageRegistry;
 		// Papago 키가 없으면 null - 이 경우 STT 결과만 로그로 남기고 번역은 건너뛴다.
 		this.translationClient = translationClient;
+		this.outputChannel = outputChannel;
 
 		silenceChecker.scheduleAtFixedRate(
 				this::flushSilentBuffers,
@@ -183,10 +188,10 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 		String recognizedText = recognized.get();
 		LOGGER.info("STT 인식 결과: {} ({}) -> {}", buffer.user.getName(), sourceLanguage, recognizedText);
 
-		translateAndLog(buffer.user, recognizedText, sourceLanguage);
+		translateAndPost(buffer.user, recognizedText, sourceLanguage);
 	}
 
-	private void translateAndLog(User speaker, String recognizedText, Language sourceLanguage) {
+	private void translateAndPost(User speaker, String recognizedText, Language sourceLanguage) {
 		if (translationClient == null) {
 			// Papago 키가 없으면(.env 미설정) 번역 없이 STT 결과만 로그로 남긴 상태로 끝낸다.
 			return;
@@ -197,12 +202,25 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 		Language targetLanguage = outputLanguageRegistry.get(speaker.getIdLong());
 		Optional<String> translated = translationClient.translate(recognizedText, sourceLanguage, targetLanguage);
 
-		if (translated.isPresent()) {
-			LOGGER.info(
-					"번역 결과: {} ({} -> {}) -> {}", speaker.getName(), sourceLanguage, targetLanguage, translated.get());
-		} else {
+		if (translated.isEmpty()) {
 			LOGGER.warn("번역 실패: {} ({} -> {})", speaker.getName(), sourceLanguage, targetLanguage);
+			return;
 		}
+
+		String translatedText = translated.get();
+		LOGGER.info("번역 결과: {} ({} -> {}) -> {}", speaker.getName(), sourceLanguage, targetLanguage, translatedText);
+
+		// 자막은 원문과 번역문을 같이 보여준다 - 번역문만 보여주면, 원문 언어를 아는 사람이
+		// 번역이 이상할 때 뭐가 잘못 들렸는지 확인할 방법이 없다.
+		//
+		// 이름은 User.getName()(글로벌 유저네임) 대신 서버 별명(Member.getEffectiveName())을
+		// 쓴다 - 채널에서 서로 부르는 이름과 일치시키기 위함. 멤버 캐시는 MemberCachePolicy.VOICE로
+		// 음성 채널에 있는 동안 채워지므로, 지금 막 말한 화자는 항상 캐시에 있어야 정상이지만
+		// 혹시 못 찾으면(캐시 미스) 유저네임으로 안전하게 대체한다.
+		Member speakerMember = outputChannel.getGuild().getMember(speaker);
+		String speakerName = speakerMember == null ? speaker.getName() : speakerMember.getEffectiveName();
+
+		outputChannel.sendMessage("**" + speakerName + "**: " + recognizedText + "\n" + translatedText).queue();
 	}
 
 	/**

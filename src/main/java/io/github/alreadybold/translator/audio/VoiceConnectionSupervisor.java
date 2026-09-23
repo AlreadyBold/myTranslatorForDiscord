@@ -78,8 +78,15 @@ public class VoiceConnectionSupervisor {
 	}
 
 	private void connectAttempt(int attemptNumber) {
+		// 음성 채널의 자막은 그 채널에 딸린 텍스트 채팅(voiceChannel 자신이 GuildMessageChannel이기도
+		// 함)에 올린다 - 통화 중인 사람들이 보고 있을 확률이 가장 높은 위치라 별도 채널 설정 없이
+		// 바로 쓸 수 있다.
 		UserAudioReceiveHandler handler = new UserAudioReceiveHandler(
-				languageRegistry, sttClientsByLanguage, outputLanguageRegistry, translationClient);
+				languageRegistry,
+				sttClientsByLanguage,
+				outputLanguageRegistry,
+				translationClient,
+				voiceChannel.asGuildMessageChannel());
 		currentHandler = handler;
 		audioManager.setReceivingHandler(handler);
 
