@@ -8,45 +8,23 @@ import net.dv8tion.jda.api.entities.GuildVoiceState;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.unions.AudioChannelUnion;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.managers.AudioManager;
 
 import io.github.alreadybold.translator.audio.UserAudioReceiveHandler;
 
 /**
- * "/join" 슬래시 커맨드를 등록하고 처리하는 리스너.
+ * "/join" 슬래시 커맨드를 처리하는 리스너.
  *
- * 커맨드를 실행한 유저가 지금 들어가 있는 음성 채널로 봇을 접속시킨다.
+ * 커맨드를 실행한 유저가 지금 들어가 있는 음성 채널로 봇을 접속시킨다. 커맨드 등록 자체는
+ * CommandRegistrationListener가 담당하고, 이 클래스는 실행 로직만 갖는다.
  * 이후 STT 연동 단계에서, 이 접속된 음성 채널을 통해 유저별 오디오를 캡처하게 된다.
  */
 public class JoinCommandListener extends ListenerAdapter {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(JoinCommandListener.class);
 
-	/**
-	 * 디스코드 연결이 완료(READY)되면 슬래시 커맨드를 등록한다.
-	 *
-	 * 글로벌 커맨드로 등록하면 모든 서버에 반영되기까지 최대 1시간이 걸릴 수 있어서,
-	 * 개발 중에는 봇이 들어가 있는 길드(서버) 단위로 등록해 즉시 테스트할 수 있게 한다.
-	 */
-	@Override
-	public void onReady(ReadyEvent event) {
-		for (Guild guild : event.getJDA().getGuilds()) {
-			guild.updateCommands()
-					.addCommands(Commands.slash("join", "봇을 내가 있는 음성 채널로 불러옵니다"))
-					.queue();
-		}
-	}
-
-	/**
-	 * 슬래시 커맨드 실행을 처리한다.
-	 *
-	 * 이 리스너에 앞으로 다른 커맨드가 추가될 수도 있으므로, 이름으로 먼저 필터링한다
-	 * (지금은 "join" 하나뿐이지만 미리 방어적으로 작성).
-	 */
 	@Override
 	public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
 		if (!"join".equals(event.getName())) {

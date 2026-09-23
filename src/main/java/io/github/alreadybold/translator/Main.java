@@ -10,7 +10,9 @@ import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
+import io.github.alreadybold.translator.command.CommandRegistrationListener;
 import io.github.alreadybold.translator.command.JoinCommandListener;
+import io.github.alreadybold.translator.command.LeaveCommandListener;
 import io.github.cdimascio.dotenv.Dotenv;
 import moe.kyokobot.libdave.NativeDaveFactory;
 import moe.kyokobot.libdave.jda.LDJDADaveSessionFactory;
@@ -53,7 +55,9 @@ public class Main {
 		// 하려면 별도로 CacheFlag를 켜야 한다. createLight는 기본적으로 모든 캐시를 꺼두기
 		// 때문에, VOICE_STATE 캐시를 켜지 않으면 member.getVoiceState()가 항상 null을 반환한다.
 		//
-		// addEventListeners: 슬래시 커맨드 등록/처리를 JoinCommandListener에 위임한다.
+		// addEventListeners: 커맨드 등록은 CommandRegistrationListener 한 곳에서만 하고,
+		// 각 커맨드의 실행 로직은 JoinCommandListener/LeaveCommandListener로 분리한다.
+		// (등록을 여러 리스너가 각자 하면 guild.updateCommands()가 서로의 등록을 덮어써버림)
 		//
 		// setMemberCachePolicy(VOICE): 오디오 패킷은 SSRC라는 숫자 ID로 "누가 보냈는지"를
 		// 나타내는데, JDA가 그 SSRC를 실제 Member 객체로 바꾸려면 그 멤버가 캐시에 있어야 한다.
@@ -73,7 +77,10 @@ public class Main {
 		JDA jda = JDABuilder.createLight(token, GatewayIntent.GUILD_VOICE_STATES)
 				.enableCache(CacheFlag.VOICE_STATE)
 				.setMemberCachePolicy(MemberCachePolicy.VOICE)
-				.addEventListeners(new JoinCommandListener())
+				.addEventListeners(
+						new CommandRegistrationListener(),
+						new JoinCommandListener(),
+						new LeaveCommandListener())
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))
 				.build();
