@@ -47,7 +47,13 @@ public enum BotMessage {
 			Language.KO, "음성 채널에서 나갈게요!",
 			Language.EN, "Leaving the voice channel!",
 			Language.CN, "即将离开语音频道!",
-			Language.JA, "ボイスチャンネルから退出します!"));
+			Language.JA, "ボイスチャンネルから退出します!")),
+
+	LANGUAGE_SET(Map.of(
+			Language.KO, "말하는 언어를 `%s`로 설정했어요.",
+			Language.EN, "Your spoken language is now set to `%s`.",
+			Language.CN, "已将你所说的语言设置为 `%s`。",
+			Language.JA, "話す言語を `%s` に設定しました。"));
 
 	private final Map<Language, String> textByLanguage;
 
