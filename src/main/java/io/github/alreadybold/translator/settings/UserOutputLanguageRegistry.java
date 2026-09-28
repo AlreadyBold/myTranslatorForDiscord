@@ -24,7 +24,7 @@ import io.github.alreadybold.translator.i18n.Language;
 public class UserOutputLanguageRegistry {
 
 	// 아직 출력 언어를 선택하지 않은 유저에게 적용할 기본값.
-	private static final Language DEFAULT_LANGUAGE = Language.KO;
+	private static final Language DEFAULT_LANGUAGE = Language.EN;
 
 	private final Map<Long, Language> languageByUserId = new ConcurrentHashMap<>();
 
@@ -34,9 +34,8 @@ public class UserOutputLanguageRegistry {
 
 	/**
 	 * 해당 유저가 선택한, "자기 발화를 번역해줄" 목표 언어. 아직 선택한 적이 없으면
-	 * 기본값(KO)을 반환한다 - 화자의 spoken language 기본값도 KO라서, 아무것도
-	 * 설정 안 하면 source==target이 되어 번역 없이 원문 그대로 나가는 게 자연스러운
-	 * 기본 동작이 된다 (PapagoTranslationClient가 이 경우를 감지해서 API 호출 자체를 생략함).
+	 * 기본값(EN)을 반환한다. UserLanguageRegistry의 spoken language 기본값(JA)과
+	 * 달라서, 아무 설정도 안 한 유저도 기본적으로 JA -> EN 번역이 바로 동작한다.
 	 */
 	public Language get(long userId) {
 		return languageByUserId.getOrDefault(userId, DEFAULT_LANGUAGE);
