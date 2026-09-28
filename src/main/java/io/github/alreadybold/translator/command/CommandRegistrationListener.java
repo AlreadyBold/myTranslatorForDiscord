@@ -1,6 +1,7 @@
 package io.github.alreadybold.translator.command;
 
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
@@ -19,6 +20,12 @@ import io.github.alreadybold.translator.i18n.Language;
  *
  * 커맨드/옵션 이름을 상수로 두는 이유는, 등록하는 쪽과 처리하는 쪽이 같은 문자열을 쓰도록
  * 강제해서 오타로 커맨드가 조용히 동작하지 않는 상황을 막기 위함이다.
+ *
+ * ReadyEvent와 GuildJoinEvent 둘 다 들어야 한다 - ReadyEvent는 봇이 게이트웨이에
+ * 최초로 연결될 때 그 시점에 이미 들어가 있던 길드들에만 한 번 발생한다. 봇이 이미
+ * 켜져 있는 상태에서 새 서버에 초대되면 ReadyEvent는 다시 안 일어나고 대신
+ * GuildJoinEvent가 발생하는데, 이걸 안 들으면 그 서버에는 커맨드가 영영 등록되지
+ * 않는다.
  */
 public class CommandRegistrationListener extends ListenerAdapter {
 
@@ -31,16 +38,25 @@ public class CommandRegistrationListener extends ListenerAdapter {
 	@Override
 	public void onReady(ReadyEvent event) {
 		for (Guild guild : event.getJDA().getGuilds()) {
-			guild.updateCommands()
-					.addCommands(
-							Commands.slash(JOIN_COMMAND, "봇을 내가 있는 음성 채널로 불러옵니다"),
-							Commands.slash(LEAVE_COMMAND, "봇을 음성 채널에서 내보냅니다"),
-							Commands.slash(SET_LANGUAGE_COMMAND, "내가 말할 언어를 설정합니다")
-									.addOptions(buildLanguageOption("말할 언어")),
-							Commands.slash(SET_OUTPUT_LANGUAGE_COMMAND, "내 발화를 번역해서 보여줄 언어를 설정합니다")
-									.addOptions(buildLanguageOption("번역해서 보여줄 언어")))
-					.queue();
+			registerCommands(guild);
 		}
+	}
+
+	@Override
+	public void onGuildJoin(GuildJoinEvent event) {
+		registerCommands(event.getGuild());
+	}
+
+	private void registerCommands(Guild guild) {
+		guild.updateCommands()
+				.addCommands(
+						Commands.slash(JOIN_COMMAND, "봇을 내가 있는 음성 채널로 불러옵니다"),
+						Commands.slash(LEAVE_COMMAND, "봇을 음성 채널에서 내보냅니다"),
+						Commands.slash(SET_LANGUAGE_COMMAND, "내가 말할 언어를 설정합니다")
+								.addOptions(buildLanguageOption("말할 언어")),
+						Commands.slash(SET_OUTPUT_LANGUAGE_COMMAND, "내 발화를 번역해서 보여줄 언어를 설정합니다")
+								.addOptions(buildLanguageOption("번역해서 보여줄 언어")))
+				.queue();
 	}
 
 	/**
