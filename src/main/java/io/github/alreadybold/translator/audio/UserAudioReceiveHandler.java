@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.UserAudio;
 import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel;
 
@@ -54,6 +55,12 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	private static final int DISCORD_PCM_BYTES_PER_MILLISECOND = 192;
 	private static final long MINIMUM_UTTERANCE_BYTES = MINIMUM_UTTERANCE_MILLIS * DISCORD_PCM_BYTES_PER_MILLISECOND;
 
+	// 자막 메시지는 텍스트 채널에 영구히 남기지 않는다 - 통화가 끝난 뒤나, 통화 중이라도
+	// 나중에 그 채널에 들어온 사람이 이전 대화 내용을 스크롤해서 볼 수 있는 게 원치 않는
+	// 동작이라고 판단했다. 3분이면 실시간 대화를 따라가기엔 충분하면서도, 대화 기록이
+	// 계속 쌓여서 남는 걸 막을 수 있는 절충값이다.
+	private static final long CAPTION_LIFETIME_MINUTES = 3;
+
 	private final UserLanguageRegistry languageRegistry;
 	private final Map<Language, SpeechToTextClient> sttClientsByLanguage;
 	private final UserOutputLanguageRegistry outputLanguageRegistry;
@@ -77,6 +84,10 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	// (테스트 중 같은 말을 반복하거나, 흔한 인사말이 겹치는 경우 등) 순수 비용 낭비다.
 	// 이 핸들러(=하나의 음성 연결) 생명주기 동안만 유지되는 캐시로 충분하다.
 	private final TranslationCache translationCache = new TranslationCache();
+	// 자막 메시지를 CAPTION_LIFETIME_MINUTES 뒤에 지우기 위한 전용 스케줄러.
+	// silenceChecker와 목적이 완전히 달라서(하나는 주기 폴링, 하나는 일회성 지연 실행)
+	// 섞어 쓰지 않고 분리했다.
+	private final ScheduledExecutorService captionCleanupScheduler = Executors.newSingleThreadScheduledExecutor();
 
 	public UserAudioReceiveHandler(
 			UserLanguageRegistry languageRegistry,
@@ -144,14 +155,16 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 	 * 끝낼 경우 그 마지막 발화가 영영 flush 안 되고 유실된다. 그래서 스케줄러를 멈추기
 	 * 전에 남아있는 모든 버퍼를 한 번 강제로 비워준다.
 	 *
-	 * recognitionExecutor는 shutdownNow()가 아니라 shutdown()으로 정리한다 - 방금
-	 * flushAllBuffers()가 던져 넣은 마지막 STT 작업은 봇이 채널을 나간 뒤에도 끝까지
-	 * 완료되게 두고, 새 작업만 더 이상 안 받도록 하기 위함이다.
+	 * recognitionExecutor와 captionCleanupScheduler는 shutdownNow()가 아니라
+	 * shutdown()으로 정리한다 - 방금 flushAllBuffers()가 던져 넣은 마지막 STT 작업은
+	 * 봇이 채널을 나간 뒤에도 끝까지 완료되게 둬야 하고, 이미 예약된 자막 삭제 작업도
+	 * 취소해버리면 그 메시지들이 영영 안 지워지고 채널에 남기 때문이다.
 	 */
 	public void shutdown() {
 		silenceChecker.shutdownNow();
 		flushAllBuffers();
 		recognitionExecutor.shutdown();
+		captionCleanupScheduler.shutdown();
 	}
 
 	private void flushSilentBuffers() {
@@ -267,7 +280,26 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 		Member speakerMember = outputChannel.getGuild().getMember(speaker);
 		String speakerName = speakerMember == null ? speaker.getName() : speakerMember.getEffectiveName();
 
-		outputChannel.sendMessage("**" + speakerName + "**: " + recognizedText + "\n" + translatedText).queue();
+		outputChannel.sendMessage("**" + speakerName + "**: " + recognizedText + "\n" + translatedText)
+				.queue(this::scheduleCaptionDeletion);
+	}
+
+	/**
+	 * 방금 보낸 자막 메시지를 CAPTION_LIFETIME_MINUTES 뒤에 삭제하도록 예약한다.
+	 *
+	 * 자기 자신이 보낸 메시지를 지우는 것이라 Manage Messages 같은 별도 권한은
+	 * 필요 없다.
+	 */
+	private void scheduleCaptionDeletion(Message message) {
+		captionCleanupScheduler.schedule(() -> {
+			try {
+				message.delete().queue();
+			} catch (RuntimeException exception) {
+				// schedule()로 던진 일회성 작업도 submit()과 마찬가지로 아무도 결과를
+				// 확인하지 않으면 예외가 로그 없이 사라진다.
+				LOGGER.error("자막 메시지 삭제 중 예외가 발생했습니다.", exception);
+			}
+		}, CAPTION_LIFETIME_MINUTES, TimeUnit.MINUTES);
 	}
 
 	/**
