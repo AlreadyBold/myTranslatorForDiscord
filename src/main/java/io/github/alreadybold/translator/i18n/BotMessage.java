@@ -67,9 +67,45 @@ public enum BotMessage {
 
 	OUTPUT_LANGUAGE_SAME_AS_SPOKEN(Map.of(
 			Language.KO, "말하는 언어(`%s`)와 같은 언어로는 번역 언어를 설정할 수 없어요.",
-			Language.EN, "You can't set the translation language to the same as your spoken language (`%s`).",
-			Language.CN, "翻译语言不能和你说的语言(`%s`)相同。",
+			Language.EN, "The translation language can't be the same as the spoken language (`%s`).",
+			Language.CN, "翻译语言不能和说话语言(`%s`)相同。",
 			Language.JA, "話す言語(`%s`)と同じ言語には翻訳先を設定できません。")),
+
+	TARGET_NOT_IN_SAME_VOICE_CHANNEL(Map.of(
+			Language.KO, "나와 같은 음성 채널에 있는 사람만 지정할 수 있어요.",
+			Language.EN, "You can only choose someone who's in the same voice channel as you.",
+			Language.CN, "只能指定和你在同一语音频道的人。",
+			Language.JA, "自分と同じボイスチャンネルにいる人だけを指定できます。")),
+
+	LANGUAGE_SET_FOR_OTHER(Map.of(
+			Language.KO, "%s님이 %s님의 말하는 언어를 `%s`로 설정했어요. 번역을 끄려면 /stoptranslate를 쓰세요.",
+			Language.EN, "%s set %s's spoken language to `%s`. Use /stoptranslate to turn translation off.",
+			Language.CN, "%s 将 %s 的说话语言设为 `%s`。可使用 /stoptranslate 关闭翻译。",
+			Language.JA, "%sさんが%sさんの話す言語を `%s` に設定しました。翻訳をオフにするには /stoptranslate を使ってください。")),
+
+	OUTPUT_LANGUAGE_SET_FOR_OTHER(Map.of(
+			Language.KO, "%s님이 %s님의 발화를 `%s`로 번역해서 보여주도록 설정했어요.",
+			Language.EN, "%s set %s's speech to be translated into `%s`.",
+			Language.CN, "%s 将 %s 的发言设置为翻译成 `%s`。",
+			Language.JA, "%sさんが%sさんの発話を `%s` に翻訳して表示するよう設定しました。")),
+
+	TRANSLATION_STOPPED(Map.of(
+			Language.KO, "번역을 껐어요. 다시 켜려면 /setlang을 실행하세요.",
+			Language.EN, "Translation turned off. Run /setlang to turn it back on.",
+			Language.CN, "已关闭翻译。如需重新开启,请使用 /setlang。",
+			Language.JA, "翻訳をオフにしました。再びオンにするには /setlang を実行してください。")),
+
+	TRANSLATION_STOPPED_FOR_OTHER(Map.of(
+			Language.KO, "%s님이 %s님의 번역을 껐어요.",
+			Language.EN, "%s turned off translation for %s.",
+			Language.CN, "%s 关闭了 %s 的翻译。",
+			Language.JA, "%sさんが%sさんの翻訳をオフにしました。")),
+
+	TRANSLATION_NOT_ACTIVE(Map.of(
+			Language.KO, "번역이 켜져 있지 않아요.",
+			Language.EN, "Translation isn't on.",
+			Language.CN, "翻译未开启。",
+			Language.JA, "翻訳はオンになっていません。")),
 
 	JOIN_FAILED(Map.of(
 			Language.KO, "음성 채널 접속에 실패했어요. 잠시 후 다시 시도해주세요.",

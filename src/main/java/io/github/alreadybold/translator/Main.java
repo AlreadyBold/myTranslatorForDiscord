@@ -20,6 +20,7 @@ import io.github.alreadybold.translator.command.JoinCommandListener;
 import io.github.alreadybold.translator.command.LeaveCommandListener;
 import io.github.alreadybold.translator.command.SetLanguageCommandListener;
 import io.github.alreadybold.translator.command.SetOutputLanguageCommandListener;
+import io.github.alreadybold.translator.command.StopTranslationCommandListener;
 import io.github.alreadybold.translator.i18n.Language;
 import io.github.alreadybold.translator.settings.UserLanguageRegistry;
 import io.github.alreadybold.translator.settings.UserOutputLanguageRegistry;
@@ -160,6 +161,7 @@ public class Main {
 						new LeaveCommandListener(languageRegistry, connectionRegistry),
 						new SetLanguageCommandListener(languageRegistry),
 						new SetOutputLanguageCommandListener(languageRegistry, outputLanguageRegistry),
+						new StopTranslationCommandListener(languageRegistry),
 						new BotVoiceDisconnectListener(connectionRegistry))
 				.setAudioModuleConfig(new AudioModuleConfig()
 						.withDaveSessionFactory(new LDJDADaveSessionFactory(new NativeDaveFactory())))

@@ -33,7 +33,9 @@ public class CommandRegistrationListener extends ListenerAdapter {
 	public static final String LEAVE_COMMAND = "leave";
 	public static final String SET_LANGUAGE_COMMAND = "setlang";
 	public static final String SET_OUTPUT_LANGUAGE_COMMAND = "setoutputlang";
+	public static final String STOP_TRANSLATION_COMMAND = "stoptranslate";
 	public static final String LANGUAGE_OPTION = "language";
+	public static final String USER_OPTION = "user";
 
 	@Override
 	public void onReady(ReadyEvent event) {
@@ -52,11 +54,22 @@ public class CommandRegistrationListener extends ListenerAdapter {
 				.addCommands(
 						Commands.slash(JOIN_COMMAND, "봇을 내가 있는 음성 채널로 불러옵니다"),
 						Commands.slash(LEAVE_COMMAND, "봇을 음성 채널에서 내보냅니다"),
-						Commands.slash(SET_LANGUAGE_COMMAND, "내가 말할 언어를 설정합니다")
-								.addOptions(buildLanguageOption("말할 언어")),
-						Commands.slash(SET_OUTPUT_LANGUAGE_COMMAND, "내 발화를 번역해서 보여줄 언어를 설정합니다")
-								.addOptions(buildLanguageOption("번역해서 보여줄 언어")))
+						Commands.slash(SET_LANGUAGE_COMMAND, "말할 언어를 설정하고 번역을 켭니다")
+								.addOptions(buildLanguageOption("말할 언어"), buildTargetUserOption()),
+						Commands.slash(SET_OUTPUT_LANGUAGE_COMMAND, "발화를 번역해서 보여줄 언어를 설정합니다")
+								.addOptions(buildLanguageOption("번역해서 보여줄 언어"), buildTargetUserOption()),
+						Commands.slash(STOP_TRANSLATION_COMMAND, "번역을 끕니다")
+								.addOptions(buildTargetUserOption()))
 				.queue();
+	}
+
+	/**
+	 * 설정 대상 유저 옵션. 선택(required=false)이라 비우면 커맨드를 실행한 본인이 대상이다.
+	 * 디스코드는 필수 옵션이 선택 옵션보다 앞에 와야 해서, 언어 옵션 뒤에 붙인다.
+	 */
+	private OptionData buildTargetUserOption() {
+		return new OptionData(
+				OptionType.USER, USER_OPTION, "대상 (비우면 나 자신, 같은 음성 채널에 있는 사람만 가능)", false);
 	}
 
 	/**

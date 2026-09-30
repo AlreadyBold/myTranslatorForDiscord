@@ -122,9 +122,9 @@ public class UserAudioReceiveHandler implements AudioReceiveHandler {
 
 		User user = userAudio.getUser();
 
-		// /setlang을 실행한 적 없는 유저는 이 봇을 쓸 생각이 없는 사람일 수 있다 -
-		// 음성 채널엔 번역 대상이 아닌 사람도 같이 있을 수 있으므로, 그런 사람 말까지
-		// 버퍼링·STT·번역으로 넘기지 않는다(원치 않는 발화 처리 방지 + API 비용 절감).
+		// 번역이 켜져 있지 않은 유저(/setlang으로 켜지 않았거나 /stoptranslate로 끈 사람)는
+		// 버퍼링·STT·번역으로 넘기지 않는다 - 음성 채널엔 번역 대상이 아닌 사람도 같이 있을
+		// 수 있으므로(원치 않는 발화 처리 방지 + API 비용 절감).
 		if (!languageRegistry.hasExplicitLanguage(user.getIdLong())) {
 			return;
 		}
